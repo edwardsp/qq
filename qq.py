@@ -1,30 +1,68 @@
+#!/usr/bin/env python3
+
 import argparse
+import datetime
 import json
 import openai
 import os
+import sqlite3
+
+conn = sqlite3.connect(os.path.join(os.environ['HOME'], '.qq_history.db'))
 
 system_prompt = "You are a tool designed to help users run commands in the terminal. Please provide the commands or script output in plain text without any markup. Avoid using backticks (`) around the command or a full stop (.) at the end of the line. Do not provide any explanations."
 system_prompt_verbose = "You are an assistant for users running commands in the terminal.  Answer with just the simple shell instructions and provide an explanation."
 
-def append_to_history(question, answer):
+def setup_database():
+    conn.execute('''CREATE TABLE IF NOT EXISTS history (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    timestamp TIMESTAMP,
+                    question TEXT,
+                    response TEXT
+                )''')
+
+def append_to_history(question, response):
+    timestamp = datetime.datetime.now()
+    conn.execute("INSERT INTO history (timestamp, question, response) VALUES (?, ?, ?)", (timestamp, question, response))
+    conn.commit()
+
+def get_history(max_items=100):
     filename = os.path.join(os.environ['HOME'], '.qq_history.json')
+    conn.row_factory = sqlite3.Row
+    cursor = conn.execute("SELECT * FROM history ORDER BY timestamp LIMIT ?", (max_items,))
+    rows = cursor.fetchall()
+    hist = []
+    for row in rows:
+        i = row['id']
+        q = row['question']
+        a = row['response'].replace("\n", " ")
 
-    if not os.path.exists(filename):
-        with open(filename, 'w') as f:
-            json.dump([], f)
-
-    with open(filename) as f:
         try:
-            file_data = json.load(f)
-            if not isinstance(file_data, list):
-                raise TypeError(f"{filename} is not a valid JSON list.")
-        except (json.JSONDecodeError, TypeError) as e:
-            print(f"Warning: {e}")
+            full_width = os.get_terminal_size().columns
+        except:
+            full_width = 80
 
-    file_data.append({"q": question, "a": answer})
+        # 5 digits for the index, 2 spaces, 2 brackets, 2 spaces
+        padding = 5 + 2 + 2 + 2
+        width = full_width - padding
+        q_width = width // 2
+        a_width = width - q_width
 
-    with open(filename, 'w') as f:
-        json.dump(file_data, f)
+        qlen = len(q)
+        alen = len(a)
+
+        if qlen > q_width:
+            if alen > a_width:
+                a = a[:a_width-3] + "..."
+                q = q[:q_width-3] + "..."
+            else:
+                if width - alen < qlen:
+                    q = q[:width-alen-3] + "..."
+        else:
+            if width - qlen < alen:
+                a = a[:width-qlen-3] + "..."
+
+        hist.append(f"{i:5}  {q}  [{a}]")
+    return "\n".join(hist)
 
 def ask_chat_completion(model, question, explanation=False, temperature=0.0):
     try:
@@ -113,60 +151,6 @@ def ask_completion(model, question, explanation=False, temperature=0.0):
         # Handles all other exceptions
         return "An exception has occured."
 
-def get_history():
-    filename = os.path.join(os.environ['HOME'], '.qq_history.json')
-
-    if not os.path.exists(filename):
-        with open(filename, 'w') as f:
-            json.dump([], f)
-
-    with open(filename) as f:
-        try:
-            file_data = json.load(f)
-            if not isinstance(file_data, list):
-                raise TypeError(f"{filename} is not a valid JSON list.")
-        except (json.JSONDecodeError, TypeError) as e:
-            print(f"Warning: {e}")
-    
-    hist = []
-    for i, item in enumerate(file_data):
-        q = item['q']
-        a = item['a']
-        if not isinstance(q, str):
-            q = ""
-        if isinstance(a, str):
-            a = a.replace("\n", " ")
-        else:
-            a = ""
-
-        try:
-            full_width = os.get_terminal_size().columns
-        except:
-            full_width = 80
-
-        # 5 digits for the index, 2 spaces, 2 brackets, 2 spaces
-        padding = 5 + 2 + 2 + 2
-        width = full_width - padding
-        q_width = width // 2
-        a_width = width - q_width
-
-        qlen = len(q)
-        alen = len(a)
-
-        if qlen > q_width:
-            if alen > a_width:
-                a = a[:a_width-3] + "..."
-                q = q[:q_width-3] + "..."
-            else:
-                if width - alen < qlen:
-                    q = q[:width-alen-3] + "..."
-        else:
-            if width - qlen < alen:
-                a = a[:width-qlen-3] + "..."
-
-        hist.append(f"{i+1:5}  {q}  [{a}]")
-    return "\n".join(hist)
-
 def find_config():
     # look for `config.json` in the current directory first otherwise $HOME/.qq_config.json
     config_file = os.path.join(os.getcwd(), 'config.json')
@@ -181,6 +165,8 @@ def find_config():
     sys.exit(1)
 
 if __name__ == "__main__":
+
+    setup_database()
 
     config_filename = find_config()
     # Load config values
