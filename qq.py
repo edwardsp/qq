@@ -3,13 +3,46 @@
 import argparse
 import datetime
 import json
+import logging
 import openai
 import os
+import platform
+import psutil
 import sqlite3
+
+logger = logging.getLogger('qq')
 
 conn = sqlite3.connect(os.path.join(os.environ['HOME'], '.qq_history.db'))
 
-system_prompt = "You are a tool designed to help users run commands in the terminal. Only use the functions you have been provided with."
+def detect_os():
+    system = platform.system()
+    if system == 'Linux':
+        return 'Linux'
+    elif system == 'Windows':
+        return 'Windows'
+    elif system == 'Darwin':
+        return 'macOS'
+    else:
+        return 'Unknown'
+
+def detect_shell():
+    shell = os.environ.get('SHELL')
+    if shell:
+        return shell.split('/')[-1]  # Extract the shell name from the full path
+    else:
+        parent_pid = os.getppid()
+        parent_name = psutil.Process(parent_pid).name()
+        logger.debug(parent_name)
+        # Check if it's Command Prompt or PowerShell on Windows
+        if 'powershell' in parent_name.lower():
+            return 'PowerShell'
+        elif 'cmd' in parent_name.lower():
+            return 'Command Prompt'
+        
+        logger.info(f"Unable to detect shell and using parent process name - {parent_name}")
+        return parent_name
+
+system_prompt = "You are a tool designed to help users run commands in the terminal. Only use the functions you have been provided with.  Do not include the command to run the shell unless it is different to the one running."
 system_prompt_verbose = "You are an assistant for users running commands in the terminal.  Answer with just the simple shell instructions and provide an explanation."
 
 def setup_database():
@@ -65,11 +98,21 @@ def get_history(max_items=100):
     return "\n".join(hist)
 
 def ask_chat_completion(model, question, explanation=False, temperature=0.0):
+    detected_os = detect_os()
+    detected_shell = detect_shell()
+    prompt = f"""
+    {system_prompt_verbose if explanation else system_prompt}
+    
+    OS: {detected_os}
+    Shell: {detected_shell}
+    """
+    logger.debug(f"Prompt: {prompt}")
+    logger.debug(f"model: {model}")
     try:
         response = openai.ChatCompletion.create(
             engine=model,
             messages=[
-                {"role": "system", "content": system_prompt_verbose if explanation else system_prompt},
+                {"role": "system", "content": prompt},
                 {"role": "user", "content": question}
             ],
             functions = [ 
@@ -175,6 +218,13 @@ if __name__ == "__main__":
         exit(1)
 
     parser = argparse.ArgumentParser(description='Ask a quick question from the terminal')
+    parser.add_argument(
+        "-v",
+        "--verbosity",
+        choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
+        default="INFO",
+        help="Set the logging verbosity level (default: INFO)",
+    )
     parser.add_argument('--explain', '-e', help='Include an explanation of the returned command', action='store_true')
     parser.add_argument('--model', '-m', choices=model_choices, default=model_choices[0], help='Choose a model')
     parser.add_argument('--temperature', '-t', help='Set the temperature for the AI model', default=0.0, type=float)
@@ -182,6 +232,14 @@ if __name__ == "__main__":
     parser.add_argument('question', nargs='*', help='The question to ask')
 
     args = parser.parse_args()
+
+    logging.basicConfig(
+        level=getattr(logging, args.verbosity),
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    )
+
+    logger.debug(f"Config file: {config_filename}")
+    logger.debug(f"Config details: {config_details}")
 
     if args.history:
         print(get_history())
