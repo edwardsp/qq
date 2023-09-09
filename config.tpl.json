@@ -1,7 +1,5 @@
 {
     "OPENAI_GPT35TURBO_MODEL": <insert-model-deployment-name>,
-    "OPENAI_TEXTDAVINCI003_MODEL": <insert-model-deployment-name>,
-    "OPENAI_CODEDAVINCI002_MODEL": <insert-model-deployment-name>,
     "OPENAI_API_BASE": <insert-azure-openai-endpoint>,
-    "OPENAI_API_VERSION":"2023-03-15-preview"
+    "OPENAI_API_VERSION":"2023-07-01-preview"
 }

@@ -9,7 +9,7 @@ import sqlite3
 
 conn = sqlite3.connect(os.path.join(os.environ['HOME'], '.qq_history.db'))
 
-system_prompt = "You are a tool designed to help users run commands in the terminal. Please provide the commands or script output in plain text without any markup. Avoid using backticks (`) around the command or a full stop (.) at the end of the line. Do not provide any explanations."
+system_prompt = "You are a tool designed to help users run commands in the terminal. Only use the functions you have been provided with."
 system_prompt_verbose = "You are an assistant for users running commands in the terminal.  Answer with just the simple shell instructions and provide an explanation."
 
 def setup_database():
@@ -72,64 +72,52 @@ def ask_chat_completion(model, question, explanation=False, temperature=0.0):
                 {"role": "system", "content": system_prompt_verbose if explanation else system_prompt},
                 {"role": "user", "content": question}
             ],
-            temperature=temperature
+            functions = [ 
+                {
+                    "name": "run_command",
+                    "description": "The command that should be run",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "command": {
+                                "type": "string", 
+                                "description": "The command to run"
+                            }
+                        }
+                    },
+                }
+            ],
+            temperature=temperature,
+            function_call="none" if explanation else {"name": "run_command"}
         )
-        return response['choices'][0]['message']['content']
+        answer = response['choices'][0]['message']
+        if 'function_call' in answer:
+            if answer['function_call']['name'] != 'run_command':
+                return f"Invalid function requested: {answer['function_call']['name']}"
+            try:
+                args = json.loads(answer['function_call']['arguments'])
+            except:
+                return f"Invalid JSON arguments returned from the function API - {answer['function_call']['arguments']}"
+            if 'command' not in args:
+                return "Missing command argument in run_command function call."
+            return args['command']
+        elif 'content' in answer:
+            return answer['content']
+
+        print(answer)
+        return "Cannot process the response."
         
     except openai.error.APIError as e:
         # Handle API error here, e.g. retry or log
-        print(f"OpenAI API returned an API Error: {e}")
+        return(f"OpenAI API returned an API Error: {e}")
 
     except openai.error.AuthenticationError as e:
         # Handle Authentication error here, e.g. invalid API key
-        print(f"OpenAI API returned an Authentication Error: {e}")
+        return(f"OpenAI API returned an Authentication Error: {e}")
 
     except openai.error.APIConnectionError as e:
         # Handle connection error here
-        print(f"Failed to connect to OpenAI API: {e}")
-
-    except openai.error.InvalidRequestError as e:
-        # Handle connection error here
-        return f"Invalid Request Error: {e}"
-
-    except openai.error.RateLimitError as e:
-        # Handle rate limit error
-        return f"OpenAI API request exceeded rate limit: {e}"
-
-    except openai.error.ServiceUnavailableError as e:
-        # Handle Service Unavailable error
-        return f"Service Unavailable: {e}"
-
-    except openai.error.Timeout as e:
-        # Handle request timeout
-        return f"Request timed out: {e}"
-        
-    except:
-        # Handles all other exceptions
-        return "An exception has occured."
-
-def ask_completion(model, question, explanation=False, temperature=0.0):
-    try:
-        prompt = (system_prompt_verbose if explanation else system_prompt) + "\nQuestion: "+question
-        response = openai.Completion.create(
-            engine=model,
-            prompt=prompt,
-            max_tokens=250,
-            temperature=temperature
-        )
-        return response['choices'][0]['text'].strip()
-        
-    except openai.error.APIError as e:
-        # Handle API error here, e.g. retry or log
-        print(f"OpenAI API returned an API Error: {e}")
-
-    except openai.error.AuthenticationError as e:
-        # Handle Authentication error here, e.g. invalid API key
-        print(f"OpenAI API returned an Authentication Error: {e}")
-
-    except openai.error.APIConnectionError as e:
-        # Handle connection error here
-        print(f"Failed to connect to OpenAI API: {e}")
+        return(f"Failed to connect to OpenAI API: {e}")
 
     except openai.error.InvalidRequestError as e:
         # Handle connection error here
@@ -181,16 +169,12 @@ if __name__ == "__main__":
     model_choices = []
     if 'OPENAI_GPT35TURBO_MODEL' in config_details:
         model_choices.append('gpt35turbo')
-    if 'OPENAI_TEXTDAVINCI003_MODEL' in config_details:
-        model_choices.append('textdavinci003')
-    if 'OPENAI_CODEDAVINCI002_MODEL' in config_details:
-        model_choices.append('codedavinci002')
 
     if len(model_choices) == 0:
         print("No models are configured. Please add a model to your config.json file.")
         exit(1)
 
-    parser = argparse.ArgumentParser(description='Description of your program')
+    parser = argparse.ArgumentParser(description='Ask a quick question from the terminal')
     parser.add_argument('--explain', '-e', help='Include an explanation of the returned command', action='store_true')
     parser.add_argument('--model', '-m', choices=model_choices, default=model_choices[0], help='Choose a model')
     parser.add_argument('--temperature', '-t', help='Set the temperature for the AI model', default=0.0, type=float)
@@ -208,12 +192,6 @@ if __name__ == "__main__":
     if args.model == 'gpt35turbo':
         model = config_details['OPENAI_GPT35TURBO_MODEL']
         a = ask_chat_completion(model, q, args.explain, args.temperature)
-    elif args.model == 'textdavinci003':
-        model = config_details['OPENAI_TEXTDAVINCI003_MODEL']
-        a = ask_completion(model, q, args.explain, args.temperature)
-    elif args.model == 'codedavinci002':
-        model = config_details['OPENAI_CODEDAVINCI002_MODEL']
-        a = ask_completion(model, q, args.explain, args.temperature)
     else:
         print(f"Unknown model: {args.model}")
         exit(1)
