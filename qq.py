@@ -195,8 +195,7 @@ def find_config():
     print("Error: No config file found.")
     sys.exit(1)
 
-if __name__ == "__main__":
-
+def quickquestion():
     setup_database()
 
     config_filename = find_config()
@@ -256,3 +255,7 @@ if __name__ == "__main__":
 
     print(a)
     append_to_history(q, a)
+
+if __name__ == "__main__":
+    quickquestion()
+    
