@@ -12,7 +12,7 @@ import sqlite3
 
 logger = logging.getLogger('qq')
 
-conn = sqlite3.connect(os.path.join(os.environ['HOME'], '.qq_history.db'))
+conn = sqlite3.connect(os.path.join(os.path.expanduser("~"), '.qq_history.db'))
 
 def detect_os():
     system = platform.system()
@@ -26,21 +26,10 @@ def detect_os():
         return 'Unknown'
 
 def detect_shell():
-    shell = os.environ.get('SHELL')
-    if shell:
-        return shell.split('/')[-1]  # Extract the shell name from the full path
-    else:
-        parent_pid = os.getppid()
-        parent_name = psutil.Process(parent_pid).name()
-        logger.debug(parent_name)
-        # Check if it's Command Prompt or PowerShell on Windows
-        if 'powershell' in parent_name.lower():
-            return 'PowerShell'
-        elif 'cmd' in parent_name.lower():
-            return 'Command Prompt'
-        
-        logger.info(f"Unable to detect shell and using parent process name - {parent_name}")
-        return parent_name
+    parent_pid = os.getppid()
+    parent_name = psutil.Process(parent_pid).name()
+    logger.debug(parent_name)
+    return parent_name.split('/')[-1]
 
 system_prompt = "You are a tool designed to help users run commands in the terminal. Only use the functions you have been provided with.  Do not include the command to run the shell unless it is different to the one running."
 system_prompt_verbose = "You are an assistant for users running commands in the terminal.  Answer with just the simple shell instructions and provide an explanation."
@@ -59,7 +48,7 @@ def append_to_history(question, response):
     conn.commit()
 
 def get_history(max_items=100):
-    filename = os.path.join(os.environ['HOME'], '.qq_history.json')
+    filename = os.path.join(os.path.expanduser("~"), '.qq_history.json')
     conn.row_factory = sqlite3.Row
     cursor = conn.execute("SELECT * FROM history ORDER BY timestamp LIMIT ?", (max_items,))
     rows = cursor.fetchall()
@@ -183,16 +172,20 @@ def ask_chat_completion(model, question, explanation=False, temperature=0.0):
         return "An exception has occured."
 
 def find_config():
-    # look for `config.json` in the current directory first otherwise $HOME/.qq_config.json
+    # look for `config.json` in the current directory first otherwise ~/.qq_config.json
     config_file = os.path.join(os.getcwd(), 'config.json')
+    logger.debug("Looking for config file: {config_file}")
     if os.path.exists(config_file):
+        logger.info("Using config file: {config_file}")
         return config_file
     
-    config_file = os.path.join(os.environ['HOME'], '.qq_config.json')
+    config_file = os.path.join(os.path.expanduser("~"), '.qq_config.json')
+    logger.debug("Looking for config file: {config_file}")
     if os.path.exists(config_file):
+        logger.info("Using config file: {config_file}")
         return config_file
     
-    print("Error: No config file found.")
+    logger.ERROR("No config file found.")
     sys.exit(1)
 
 def quickquestion():
