@@ -28,6 +28,8 @@ def detect_os():
 def detect_shell():
     parent_pid = os.getppid()
     parent_name = psutil.Process(parent_pid).name()
+    if parent_name == "qq.exe":
+        parent_name = psutil.Process(parent_pid).parent().name()
     logger.debug(parent_name)
     return parent_name.split('/')[-1]
 
