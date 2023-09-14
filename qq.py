@@ -52,10 +52,10 @@ def append_to_history(question, response):
 def get_history(max_items=100):
     filename = os.path.join(os.path.expanduser("~"), '.qq_history.json')
     conn.row_factory = sqlite3.Row
-    cursor = conn.execute("SELECT * FROM history ORDER BY timestamp LIMIT ?", (max_items,))
+    cursor = conn.execute("SELECT * FROM history ORDER BY timestamp DESC LIMIT ?", (max_items,))
     rows = cursor.fetchall()
     hist = []
-    for row in rows:
+    for row in rows[::-1]:
         i = row['id']
         q = row['question']
         a = row['response'].replace("\n", " ")
