@@ -9,6 +9,7 @@ import os
 import platform
 import psutil
 import sqlite3
+import sys
 
 logger = logging.getLogger('qq')
 
@@ -43,6 +44,19 @@ def setup_database():
                     question TEXT,
                     response TEXT
                 )''')
+
+def get_history_item(id):
+    ilename = os.path.join(os.path.expanduser("~"), '.qq_history.json')
+    conn.row_factory = sqlite3.Row
+    if not id or id <= 0:
+        cursor = conn.execute("SELECT * FROM history ORDER BY timestamp DESC LIMIT 1")
+    else:
+        cursor = conn.execute("SELECT * FROM history WHERE id = ?", (id,))
+    rows = cursor.fetchall()
+    if len(rows) == 0:
+        logger.error(f"No history item found with id {id}")
+        sys.exit(1)
+    return (rows[0]['question'], rows[0]['response'])
 
 def append_to_history(question, response):
     timestamp = datetime.datetime.now()
@@ -88,90 +102,125 @@ def get_history(max_items=100):
         hist.append(f"{i:5}  {q}  [{a}]")
     return "\n".join(hist)
 
-def ask_chat_completion(model, question, explanation=False, temperature=0.0):
+def openai_chat_completion(model, prompt, question, functions, function_call, temperature):
+    logger.debug(f"Prompt: {prompt}")
+    logger.debug(f"model: {model}")
+    logger.debug(f"question: {question}")
+    try:
+        if len(functions) > 0:
+            response = openai.ChatCompletion.create(
+                engine=model,
+                messages=[
+                    {"role": "system", "content": prompt},
+                    {"role": "user", "content": question}
+                ],
+                temperature = temperature,
+                functions = functions,
+                function_call = function_call
+            )
+        else:
+            response = openai.ChatCompletion.create(
+                engine=model,
+                messages=[
+                    {"role": "system", "content": prompt},
+                    {"role": "user", "content": question}
+                ],
+                temperature = temperature
+            )
+        return response['choices'][0]['message']
+        
+    except openai.error.APIError as e:
+        logger.error(f"OpenAI API returned an API Error: {e}")
+        sys.exit(1)
+    except openai.error.AuthenticationError as e:
+        logger.error(f"OpenAI API returned an Authentication Error: {e}")
+        sys.exit(1)
+    except openai.error.APIConnectionError as e:
+        logger.error(f"Failed to connect to OpenAI API: {e}")
+        sys.exit(1)
+    except openai.error.InvalidRequestError as e:
+        logger.error(f"Invalid Request Error: {e}")
+        sys.exit(1)
+    except openai.error.RateLimitError as e:
+        logger.error(f"OpenAI API request exceeded rate limit: {e}")
+        sys.exit(1)
+    except openai.error.ServiceUnavailableError as e:
+        logger.error(f"Service Unavailable: {e}")
+        sys.exit(1)
+    except openai.error.Timeout as e:
+        logger.error(f"Request timed out: {e}")
+        sys.exit(1)
+    except:
+        logger.error("An exception has occured.")
+        sys.exit(1)
+
+def ask_chat_completion_question(model, question, temperature):
     detected_os = detect_os()
     detected_shell = detect_shell()
     prompt = f"""
-    {system_prompt_verbose if explanation else system_prompt}
+    You are a tool designed to help users run commands in the terminal.  Only use the functions you have been provided with.  Do not include the command to run the shell unless it is different to the one running.
     
     OS: {detected_os}
     Shell: {detected_shell}
     """
-    logger.debug(f"Prompt: {prompt}")
-    logger.debug(f"model: {model}")
-    try:
-        response = openai.ChatCompletion.create(
-            engine=model,
-            messages=[
-                {"role": "system", "content": prompt},
-                {"role": "user", "content": question}
-            ],
-            functions = [ 
-                {
-                    "name": "run_command",
-                    "description": "The command that should be run",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "command": {
-                                "type": "string", 
-                                "description": "The command to run"
-                            }
-                        }
-                    },
+    functions = [
+        {
+            "name": "run_command",
+            "description": "The command that should be run",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "command": {
+                        "type": "string", 
+                        "description": "The command to run"
+                    }
                 }
-            ],
-            temperature=temperature,
-            function_call="none" if explanation else {"name": "run_command"}
-        )
-        answer = response['choices'][0]['message']
-        if 'function_call' in answer:
-            if answer['function_call']['name'] != 'run_command':
-                return f"Invalid function requested: {answer['function_call']['name']}"
-            try:
-                args = json.loads(answer['function_call']['arguments'])
-            except:
-                return f"Invalid JSON arguments returned from the function API - {answer['function_call']['arguments']}"
-            if 'command' not in args:
-                return "Missing command argument in run_command function call."
-            return args['command']
-        elif 'content' in answer:
-            return answer['content']
+            },
+        }
+    ]
+    function_call = {"name": "run_command"}
 
-        print(answer)
-        return "Cannot process the response."
-        
-    except openai.error.APIError as e:
-        # Handle API error here, e.g. retry or log
-        return(f"OpenAI API returned an API Error: {e}")
+    answer = openai_chat_completion(model, prompt, question, functions, function_call, temperature)
+    
+    if 'function_call' in answer:
+        if answer['function_call']['name'] != 'run_command':
+            logger.error(f"Invalid function requested: {answer['function_call']['name']}")
+            sys.exit(1)
+        try:
+            args = json.loads(answer['function_call']['arguments'])
+        except:
+            logger.error(f"Invalid JSON arguments returned from the function API - {answer['function_call']['arguments']}")
+            sys.exit(1)
+        if 'command' not in args:
+            logger.error("Missing command argument in run_command function call.")
+            sys.exit(1)
+        return args['command']
 
-    except openai.error.AuthenticationError as e:
-        # Handle Authentication error here, e.g. invalid API key
-        return(f"OpenAI API returned an Authentication Error: {e}")
+    logger.debug(answer)
+    logger.error("Cannot process the response.")
+    sys.exit(1)
+    
+def ask_chat_completion_explanation(model, question, answer, temperature):
+    detected_os = detect_os()
+    detected_shell = detect_shell()
+    prompt = f"""
+    You are a tool designed to help users run commands in the terminal.  You will be provided a question and an answer that was previously given.  Provide an explanation for how the command works to solve the original question.
+    
+    OS: {detected_os}
+    Shell: {detected_shell}
+    """
+    question = f"""
+    Provide an explanation for the following:
+    Question: {question}
+    Answer: {answer}
+    """
+    answer = openai_chat_completion(model, prompt, question, [], None, temperature)
+    if 'content' in answer:
+        return answer['content']
 
-    except openai.error.APIConnectionError as e:
-        # Handle connection error here
-        return(f"Failed to connect to OpenAI API: {e}")
-
-    except openai.error.InvalidRequestError as e:
-        # Handle connection error here
-        return f"Invalid Request Error: {e}"
-
-    except openai.error.RateLimitError as e:
-        # Handle rate limit error
-        return f"OpenAI API request exceeded rate limit: {e}"
-
-    except openai.error.ServiceUnavailableError as e:
-        # Handle Service Unavailable error
-        return f"Service Unavailable: {e}"
-
-    except openai.error.Timeout as e:
-        # Handle request timeout
-        return f"Request timed out: {e}"
-        
-    except:
-        # Handles all other exceptions
-        return "An exception has occured."
+    logger.debug(answer)
+    logger.error("Cannot process the response.")
+    sys.exit(1)
 
 def find_config():
     # look for `config.json` in the current directory first otherwise ~/.qq_config.json
@@ -219,7 +268,7 @@ def quickquestion():
         default="INFO",
         help="Set the logging verbosity level (default: INFO)",
     )
-    parser.add_argument('--explain', '-e', help='Include an explanation of the returned command', action='store_true')
+    parser.add_argument('--explain', '-e', help='Give an explanation for the command.  Either leave blank for the previous command or use the index from the history command.', type=int, default=0, nargs='?')
     parser.add_argument('--model', '-m', choices=model_choices, default=model_choices[0], help='Choose a model')
     parser.add_argument('--temperature', '-t', help='Set the temperature for the AI model', default=0.0, type=float)
     parser.add_argument('--history', help='Show the history of commands and responses', action='store_true')
@@ -239,17 +288,30 @@ def quickquestion():
         print(get_history())
         exit(0)
 
-    q = ' '.join(args.question)
+    explain = (args.explain != 0)
+
+    if explain:
+        q, a = get_history_item(args.explain)
+    else:
+        q = ' '.join(args.question)
 
     if args.model == 'gpt35turbo':
         model = config_details['OPENAI_GPT35TURBO_MODEL']
-        a = ask_chat_completion(model, q, args.explain, args.temperature)
+        if explain:
+            print("Question: ", q)
+            print("Answer: ", a)
+            print("Explanation:")
+            a = ask_chat_completion_explanation(model, q, a, args.temperature)
+        else:
+            a = ask_chat_completion_question(model, q, args.temperature)
     else:
-        print(f"Unknown model: {args.model}")
+        logger.error(f"Unknown model: {args.model}")
         exit(1)
 
     print(a)
-    append_to_history(q, a)
+
+    if not explain:
+        append_to_history(q, a)
 
 if __name__ == "__main__":
     quickquestion()
