@@ -26,6 +26,8 @@ Create the config file with the model.  This will either be `config.json` in the
 
 > Note:  All the information is available in the Azure OpenAI resource.  A minimum of one model is required.
 
+You are required to have the `OPENAI_API_KEY` environment variable set when running `qq`.  This is the API key for the Azure OpenAI resource.  You can put this in your startup file for your shell.
+
 # Usage
 
 ```
