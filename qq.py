@@ -107,27 +107,20 @@ def openai_chat_completion(model, prompt, question, functions, function_call, te
     logger.debug(f"Prompt: {prompt}")
     logger.debug(f"model: {model}")
     logger.debug(f"question: {question}")
+    func_args = {
+        "engine": model,
+        "messages": [
+            {"role": "system", "content": prompt},
+            {"role": "user", "content": question}
+        ],
+        "temperature": temperature
+    }
+    if len(functions) > 0:
+        func_args['functions'] = functions
+        func_args['function_call'] = function_call
+
     try:
-        if len(functions) > 0:
-            response = openai.ChatCompletion.create(
-                engine=model,
-                messages=[
-                    {"role": "system", "content": prompt},
-                    {"role": "user", "content": question}
-                ],
-                temperature = temperature,
-                functions = functions,
-                function_call = function_call
-            )
-        else:
-            response = openai.ChatCompletion.create(
-                engine=model,
-                messages=[
-                    {"role": "system", "content": prompt},
-                    {"role": "user", "content": question}
-                ],
-                temperature = temperature
-            )
+        response = openai.ChatCompletion.create(**func_args)
         return response['choices'][0]['message']
         
     except openai.error.APIError as e:
