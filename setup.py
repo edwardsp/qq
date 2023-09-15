@@ -13,6 +13,7 @@ setup(
     install_requires=[
         "openai>=0.28.0",
         "psutil>=5.9.5",
+        "pyperclip>=1.8.2",
     ],
     entry_points={
         "console_scripts": [

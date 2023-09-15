@@ -8,6 +8,7 @@ import openai
 import os
 import platform
 import psutil
+import pyperclip
 import sqlite3
 import sys
 
@@ -311,6 +312,7 @@ def quickquestion():
     print(a)
 
     if not explain:
+        pyperclip.copy(a)
         append_to_history(q, a)
 
 if __name__ == "__main__":
