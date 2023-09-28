@@ -144,22 +144,22 @@ def openai_chat_completion(model, prompt, question, functions, function_call, te
         logger.error(f"OpenAI API returned an Authentication Error: {e}")
         sys.exit(1)
     except openai.error.APIConnectionError as e:
-        logger.error("Failed to connect to OpenAI API: {e}")
+        logger.error(f"Failed to connect to OpenAI API: {e}")
         sys.exit(1)
     except openai.error.InvalidRequestError as e:
-        logger.error("Invalid Request Error: {e}")
+        logger.error(f"Invalid Request Error: {e}")
         sys.exit(1)
     except openai.error.RateLimitError as e:
-        logger.error("OpenAI API request exceeded rate limit: {e}")
+        logger.error(f"OpenAI API request exceeded rate limit: {e}")
         sys.exit(1)
     except openai.error.ServiceUnavailableError as e:
-        logger.error("Service Unavailable: {e}")
+        logger.error(f"Service Unavailable: {e}")
         sys.exit(1)
     except openai.error.Timeout as e:
-        logger.error("Request timed out: {e}")
+        logger.error(f"Request timed out: {e}")
         sys.exit(1)
     except:
-        logger.exception("An unknown exception has occurred")
+        logger.exception(f"An unknown exception has occurred: {e}")
         sys.exit(1)
 
 def ask_chat_completion_question(model, question, temperature):
