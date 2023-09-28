@@ -14,6 +14,7 @@ setup(
         "openai>=0.28.0",
         "psutil>=5.9.5",
         "pyperclip>=1.8.2",
+        "rich>=13.5.3"
     ],
     entry_points={
         "console_scripts": [

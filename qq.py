@@ -12,6 +12,8 @@ import pyperclip
 import sqlite3
 import sys
 import functools
+from rich import print as rprint
+from rich.logging import RichHandler
 
 logger = logging.getLogger('qq')
 
@@ -78,44 +80,24 @@ def append_to_history(question, response):
     conn.execute("INSERT INTO history (timestamp, question, response) VALUES (?, ?, ?)", (timestamp, question, response))
     conn.commit()
 
-def get_history(max_items=100):
-    filename = os.path.join(os.path.expanduser("~"), '.qq_history.json')
+def show_history(max_items=100):
+    # Only import when needed to avoid slowing down startup
+    from rich.table import Table
+    from rich.console import Console
+
+    table = Table(title = "QQ History", show_header=True, header_style="bold magenta", highlight=True)
+    table.add_column("ID", justify="right", style="dim", width=len(str(max_items)))
+    table.add_column("Timestamp", justify="center", style="dim")
+    table.add_column("Question", justify="left")
+    table.add_column("Answer", justify="left")
+
     conn.row_factory = sqlite3.Row
     cursor = conn.execute("SELECT * FROM history ORDER BY timestamp DESC LIMIT ?", (max_items,))
     rows = cursor.fetchall()
-    hist = []
     for row in rows[::-1]:
-        i = row['id']
-        q = row['question']
-        a = row['response'].replace("\n", " ")
+        table.add_row(str(row['id']), row['timestamp'], row['question'], row['response'])
 
-        try:
-            full_width = os.get_terminal_size().columns
-        except:
-            full_width = 80
-
-        # 5 digits for the index, 2 spaces, 2 brackets, 2 spaces
-        padding = 5 + 2 + 2 + 2
-        width = full_width - padding
-        q_width = width // 2
-        a_width = width - q_width
-
-        qlen = len(q)
-        alen = len(a)
-
-        if qlen > q_width:
-            if alen > a_width:
-                a = a[:a_width-3] + "..."
-                q = q[:q_width-3] + "..."
-            else:
-                if width - alen < qlen:
-                    q = q[:width-alen-3] + "..."
-        else:
-            if width - qlen < alen:
-                a = a[:width-qlen-3] + "..."
-
-        hist.append(f"{i:5}  {q}  [{a}]")
-    return "\n".join(hist)
+    Console().print(table)
 
 def openai_chat_completion(model, prompt, question, functions, function_call, temperature):
     logger.debug(f"Prompt: {prompt}")
@@ -167,6 +149,7 @@ def ask_chat_completion_question(model, question, temperature):
     detected_shell = detect_shell()
     prompt = f"""
     You are a tool designed to help users run commands in the terminal.  Only use the functions you have been provided with.  Do not include the command to run the shell unless it is different to the one running.
+    Format the command in a way that typical placeholder values are used, such as <filename> or <username>.
     
     OS: {detected_os}
     Shell: {detected_shell}
@@ -201,6 +184,7 @@ def ask_chat_completion_question(model, question, temperature):
     except Exception as e:
         logger.exception(f"Invalid JSON arguments returned from the function API - {answer['function_call']['arguments']}\n{e}")
         sys.exit(1)
+
     if 'command' not in args:
         error_and_exit("Missing command argument in run_command function call.")
     return args['command']
@@ -303,25 +287,33 @@ def quickquestion():
     logging.basicConfig(
         level=getattr(logging, args.verbosity),
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+        handlers=[RichHandler(rich_tracebacks=True)],
     )
 
     if args.history:
-        print(get_history())
-        exit(0)
+        show_history()
+    elif args.explain != 0:
+        from rich.panel import Panel
+        from rich.progress import Progress
 
-    if args.explain != 0:
         q, a = get_history_item(args.explain)
-        print("Question: ", q)
-        print("Answer: ", a)
-        print("Explanation:")
-        a = ask_chat_completion_explanation(args.model, q, a, args.temperature)
+        rprint(Panel(q, title="Question"))
+        rprint(Panel(a, title="Answer"))
+        with Progress(transient=True) as progress:
+            progress.add_task("Generating explanation...", total=None)
+            rprint(Panel(ask_chat_completion_explanation(args.model, q, a, args.temperature), title="Explanation"))
+        
     else:
-        q = ' '.join(args.question)
+        q = args.question
+        if args.question:
+            q = ' '.join(args.question)
+        else:
+            from rich.prompt import Prompt
+            q = Prompt.ask("What command are you looking for")
         a = ask_chat_completion_question(args.model, q, args.temperature)
+        rprint(a)
         pyperclip.copy(a)
         append_to_history(q, a)
-
-    print(a)
 
 if __name__ == "__main__":
     quickquestion()
