@@ -47,7 +47,6 @@ def setup_database():
                 )''')
 
 def get_history_item(id):
-    ilename = os.path.join(os.path.expanduser("~"), '.qq_history.json')
     conn.row_factory = sqlite3.Row
     if not id or id <= 0:
         cursor = conn.execute("SELECT * FROM history ORDER BY timestamp DESC LIMIT 1")
