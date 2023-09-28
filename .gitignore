@@ -2,5 +2,9 @@
 .venv
 .env
 
+build
+*.egg-info
+.vscode
+
 # Ensure that we're not checking in any keys
 config.json
