@@ -74,7 +74,7 @@ def get_history_item(id):
     return (rows[0]['question'], rows[0]['response'])
 
 def append_to_history(question, response):
-    timestamp = datetime.datetime.now()
+    timestamp = datetime.datetime.now().replace(microsecond=0)
     conn.execute("INSERT INTO history (timestamp, question, response) VALUES (?, ?, ?)", (timestamp, question, response))
     conn.commit()
 
