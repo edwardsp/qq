@@ -14,6 +14,9 @@ import sys
 import functools
 from rich import print as rprint
 from rich.logging import RichHandler
+from rich.panel import Panel
+from rich.progress import Progress
+
 
 logger = logging.getLogger('qq')
 
@@ -293,9 +296,6 @@ def quickquestion():
     if args.history:
         show_history()
     elif args.explain != 0:
-        from rich.panel import Panel
-        from rich.progress import Progress
-
         q, a = get_history_item(args.explain)
         rprint(Panel(q, title="Question"))
         rprint(Panel(a, title="Answer"))
@@ -310,7 +310,9 @@ def quickquestion():
         else:
             from rich.prompt import Prompt
             q = Prompt.ask("What command are you looking for")
-        a = ask_chat_completion_question(args.model, q, args.temperature)
+        with Progress(transient=True) as progress:
+            progress.add_task("Generating answer...", total=None)
+            a = ask_chat_completion_question(args.model, q, args.temperature)
         rprint(a)
         pyperclip.copy(a)
         append_to_history(q, a)
