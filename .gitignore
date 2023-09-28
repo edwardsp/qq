@@ -1,0 +1,6 @@
+# Ignore virtual environments
+.venv
+.env
+
+# Ensure that we're not checking in any keys
+config.json
