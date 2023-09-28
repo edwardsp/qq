@@ -35,6 +35,10 @@ def detect_shell():
     logger.debug(parent_name)
     return parent_name.split('/')[-1]
 
+def error_and_exit(message):
+    logger.error(message)
+    sys.exit(1)
+
 system_prompt = "You are a tool designed to help users run commands in the terminal. Only use the functions you have been provided with.  Do not include the command to run the shell unless it is different to the one running."
 system_prompt_verbose = "You are an assistant for users running commands in the terminal.  Answer with just the simple shell instructions and provide an explanation."
 
@@ -121,7 +125,7 @@ def openai_chat_completion(model, prompt, question, functions, function_call, te
     try:
         response = openai.ChatCompletion.create(**func_args)
         return response['choices'][0]['message']
-        
+
     except openai.error.APIError as e:
         logger.error(f"OpenAI API returned an API Error: {e}")
         sys.exit(1)
@@ -144,7 +148,7 @@ def openai_chat_completion(model, prompt, question, functions, function_call, te
         logger.error(f"Request timed out: {e}")
         sys.exit(1)
     except:
-        logger.error("An exception has occured.")
+        logger.exception(f"An unknown exception has occurred")
         sys.exit(1)
 
 def ask_chat_completion_question(model, question, temperature):
@@ -229,7 +233,7 @@ def find_config():
         logger.info("Using config file: {config_file}")
         return config_file
     
-    logger.ERROR("No config file found.")
+    logger.error("No config file found.")
     sys.exit(1)
 
 def quickquestion():
