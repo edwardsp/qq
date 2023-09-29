@@ -1,0 +1,11 @@
+# Ignore virtual environments
+.venv
+.env
+
+build
+*.egg-info
+.vscode
+.eggs
+
+# Ensure that we're not checking in any keys
+config.json

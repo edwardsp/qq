@@ -1,5 +1,10 @@
 {
-    "OPENAI_GPT35TURBO_MODEL": <insert-model-deployment-name>,
+    "OPENAI_API_TYPE": <azure-or-open_ai>,
+    "OPENAI_MODEL": <default-chat-model-to-use>,
+    "OPENAI_API_KEY": <azure-or-openai-key>,
+
+    "OPENAI_ORGANIZATION": <Organization-required-for-openai-endpoint>
+
     "OPENAI_API_BASE": <insert-azure-openai-endpoint>,
     "OPENAI_API_VERSION":"2023-07-01-preview"
 }
