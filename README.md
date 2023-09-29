@@ -6,7 +6,14 @@ This is a simple command line application to ask questions to the Azure OpenAI A
 
 # Pre-requisites
 
-You will need a OpenAI model deployed on Azure.  Follow instructions [here](https://learn.microsoft.com/en-us/azure/ai-services/openai/how-to/create-resource?pivots=web-portal).
+You will need access to an Open AI chat completion model.  Currently, the models supported are:
+
+* gpt-3.5-turbo
+* gpt-4
+* gpt-3.5-turbo-16k
+* gpt-4-32k
+
+The model can be from either OpenAI or Azure OpenAI.  For instructions on deploying a model to Azure OpenAI, see [here](https://learn.microsoft.com/en-us/azure/ai-services/openai/how-to/create-resource?pivots=web-portal).
 
 # Setup
 
@@ -14,25 +21,38 @@ Install with pip:
 
     pip install .
 
-Create the config file with the model.  This will either be `config.json` in the working directory or `~/.qq_config.json`.  Here is the format:
+Create the config file.  This can either be `config.json` in the working directory or `~/.qq_config.json`.  Any of the options can be set through an environment variable.  Here is the format for Azure OpenAI:
 
 ```
 {
-    "OPENAI_GPT35TURBO_MODEL": <insert-model-deployment-name>,
-    "OPENAI_API_BASE": <insert-azure-openai-endpoint>,
+    "OPENAI_API_TYPE": "azure",
+    "OPENAI_API_BASE": "<insert-azure-openai-endpoint>",
+    "OPENAI_MODEL": "<insert-model-deployment-name>",
+    "OPENAI_API_KEY": "<insert-openai-api-key>",
     "OPENAI_API_VERSION":"2023-07-01-preview"
 }
 ```
 
-> Note:  All the information is available in the Azure OpenAI resource.  A minimum of one model is required.
+And, this is the format for OpenAI:
 
-You are required to have the `OPENAI_API_KEY` environment variable set when running `qq`.  This is the API key for the Azure OpenAI resource.  You can put this in your startup file for your shell.
+```
+{
+    "OPENAI_API_TYPE": "open_ai",
+    "OPENAI_ORGANIZATION": "<insert-openai-org-id>",
+    "OPENAI_API_KEY": "<insert-openai-key>",
+    "OPENAI_MODEL": "<insert-openai-model-name>"
+}
+```
+
+> Note:  All the information is available in either your OpenAI or Azure OpenAI account.
 
 # Usage
 
 ```
 $ qq -h
-usage: qq [-h] [-v {DEBUG,INFO,WARNING,ERROR,CRITICAL}] [--explain [EXPLAIN]] [--model {gpt35turbo}] [--temperature TEMPERATURE] [--history] [question [question ...]]
+usage: qq [-h] [-v {DEBUG,INFO,WARNING,ERROR,CRITICAL}] [--explain [EXPLAIN]]
+          [--temperature TEMPERATURE] [--history]
+          [question [question ...]]
 
 Ask a quick question from the terminal
 
@@ -44,9 +64,8 @@ optional arguments:
   -v {DEBUG,INFO,WARNING,ERROR,CRITICAL}, --verbosity {DEBUG,INFO,WARNING,ERROR,CRITICAL}
                         Set the logging verbosity level (default: INFO)
   --explain [EXPLAIN], -e [EXPLAIN]
-                        Give an explanation for the command. Either leave blank for the previous command or use the index from the history command.
-  --model {gpt35turbo}, -m {gpt35turbo}
-                        Choose a model
+                        Give an explanation for the command. Either leave blank for the previous
+                        command or use the index from the history command.
   --temperature TEMPERATURE, -t TEMPERATURE
                         Set the temperature for the AI model
   --history             Show the history of commands and responses
@@ -69,31 +88,49 @@ Find files between 1KB and 10KB
 
 ```
 PS> qq find all files between 1KB and 10KB below the current directory
-Get-ChildItem -Recurse | Where-Object { $_.Length -ge 1KB -and $_.Length -le 10KB }
+Get-ChildItem -Recurse | Where-Object {($_.Length/1KB) -gt 1 -and ($_.Length/1KB) -lt 10}
 ```
 
 Getting an explanation for the last command:
 
 ```
 PS> qq -e
-Question:  find all files between 1KB and 10KB below the current directory
-Answer:  Get-ChildItem -Recurse | Where-Object { $_.Length -ge 1KB -and $_.Length -le 10KB }
-Explanation:
-The command provided is using PowerShell to find all files between 1KB and 10KB below the current directory.
-
-Here is a breakdown of how the command works:
-
-1. `Get-ChildItem -Recurse`: This command is used to retrieve all files and directories below the current directory. The `-Recurse` parameter ensures that all subdirectories are also included in the search.
-
-2. `Where-Object { $_.Length -ge 1KB -and $_.Length -le 10KB }`: This part of the command filters the results obtained from the previous step. The `Where-Object` cmdlet is used to specify a condition that each file must meet in order to be included in the final output.
-
-   - `$_` represents the current object being evaluated, which in this case is each file.
-   - `$_.Length` retrieves the size of each file in bytes.
-   - `-ge` is the comparison operator for "greater than or equal to".
-   - `-le` is the comparison operator for "less than or equal to".
-   - `1KB` and `10KB` are the size limits specified in kilobytes.
-
-   Therefore, the condition `{ $_.Length -ge 1KB -and $_.Length -le 10KB }` ensures that only files with a size between 1KB and 10KB (inclusive) are selected.
-
-In summary, the command retrieves all files and directories below the current directory and then filters the results to only include files with a size between 1KB and 10KB.
+╭───────────────────────────────────────── Question ──────────────────────────────────────────╮
+│ find all files between 1KB and 10KB below the current directory                             │
+╰─────────────────────────────────────────────────────────────────────────────────────────────╯
+╭────────────────────────────────────────── Answer ───────────────────────────────────────────╮
+│ Get-ChildItem -Recurse | Where-Object {($_.Length/1KB) -gt 1 -and ($_.Length/1KB) -lt 10}   │
+╰─────────────────────────────────────────────────────────────────────────────────────────────╯
+╭──────────────────────────────────────── Explanation ────────────────────────────────────────╮
+│ The command provided is a PowerShell command used to find all files in the current          │
+│ directory and its subdirectories that are between 1KB and 10KB in size.                     │
+│                                                                                             │
+│ Here's a breakdown of how it works:                                                         │
+│                                                                                             │
+│ - `Get-ChildItem -Recurse`: This is the initial command that starts the process.            │
+│ `Get-ChildItem` is a cmdlet in PowerShell that gets the items (files, directories) in one   │
+│ or more specified locations. The `-Recurse` parameter tells PowerShell to get items in all  │
+│ child containers (subdirectories) of the location specified, not just the current           │
+│ directory.                                                                                  │
+│                                                                                             │
+│ - `|`: This is the pipeline operator in PowerShell. It takes the output from the command on │
+│ its left (in this case, `Get-ChildItem -Recurse`) and passes it as input to the command on  │
+│ its right.                                                                                  │
+│                                                                                             │
+│ - `Where-Object {($_.Length/1KB) -gt 1 -and ($_.Length/1KB) -lt 10}`: This is the command   │
+│ that filters the output from `Get-ChildItem -Recurse`. `Where-Object` is a cmdlet that      │
+│ filters input from the pipeline. In this case, it's filtering based on the size of the      │
+│ files.                                                                                      │
+│                                                                                             │
+│     - `$_.Length/1KB`: This expression gets the size of each file in kilobytes. `$_` is a   │
+│ variable in PowerShell that represents the current object in the pipeline (in this case,    │
+│ each file). `.Length` is a property of file objects that represents their size in bytes, so │
+│ dividing by 1KB converts the size to kilobytes.                                             │
+│                                                                                             │
+│     - `-gt 1 -and -lt 10`: These are the conditions that the file sizes must meet to pass   │
+│ the filter. `-gt 1` means "greater than 1KB", `-lt 10` means "less than 10KB", and `-and`   │
+│ is a logical operator that requires both conditions to be true. So, only files that are     │
+│ more than 1KB and less than 10KB in size will pass the filter and be included in the        │
+│ output.                                                                                     │
+╰─────────────────────────────────────────────────────────────────────────────────────────────╯
 ```

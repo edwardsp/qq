@@ -2,6 +2,7 @@
 
 import argparse
 import datetime
+import functools
 import json
 import logging
 import openai
@@ -11,12 +12,11 @@ import psutil
 import pyperclip
 import sqlite3
 import sys
-import functools
 from rich import print as rprint
 from rich.logging import RichHandler
 from rich.panel import Panel
 from rich.progress import Progress
-
+from typing import Dict
 
 logger = logging.getLogger('qq')
 
@@ -107,13 +107,18 @@ def openai_chat_completion(model, prompt, question, functions, function_call, te
     logger.debug(f"model: {model}")
     logger.debug(f"question: {question}")
     func_args = {
-        "model": model,
         "messages": [
             {"role": "system", "content": prompt},
             {"role": "user", "content": question}
         ],
         "temperature": temperature
     }
+    if openai.api_type == 'azure':
+        func_args['engine'] = model
+    elif openai.api_type == 'open_ai':
+        func_args['model'] = model
+    else:
+        error_and_exit(f"Invalid API type: {open_ai.api_type}")
     if len(functions) > 0:
         func_args['functions'] = functions
         func_args['function_call'] = function_call
@@ -215,8 +220,8 @@ def ask_chat_completion_explanation(model, question, answer, temperature):
     logger.error("Cannot process the response.")
     sys.exit(1)
 
-@functools.cache
-def load_configfile() -> dict[str, str]:
+@functools.lru_cache
+def load_configfile() -> Dict[str, str]:
     """
     Look for `config.json` in the current directory first otherwise ~/.qq_config.json
     """
@@ -240,7 +245,7 @@ def load_configfile() -> dict[str, str]:
     logger.error("No config file found.")
     sys.exit(1)
 
-@functools.cache
+@functools.lru_cache
 def get_config_value(config_name: str, default_value = None):
     config_data = load_configfile()
 
@@ -261,15 +266,16 @@ def quickquestion():
     openai.api_type = get_config_value('OPENAI_API_TYPE', 'azure').lower()
     openai.api_key = get_config_value("OPENAI_API_KEY")
 
+    openai_model = get_config_value('OPENAI_MODEL')
     if openai.api_type == 'azure':
         openai.api_base = get_config_value('OPENAI_API_BASE')
         openai.api_version = get_config_value('OPENAI_API_VERSION')
     elif openai.api_type == 'open_ai':
         openai.organization = get_config_value('OPENAI_ORGANIZATION')
+        if openai_model not in supported_models:
+            logger.warning(f"Configured model {openai_model} is not in the list of supported models.")
 
-    default_model = get_config_value('OPENAI_MODEL', supported_models[0])
-    if default_model not in supported_models:
-        logger.warning(f"Configured model {default_model} is not in the list of supported models.")
+
 
     parser = argparse.ArgumentParser(description='Ask a quick question from the terminal')
     parser.add_argument(
@@ -280,7 +286,6 @@ def quickquestion():
         help="Set the logging verbosity level (default: INFO)",
     )
     parser.add_argument('--explain', '-e', help='Give an explanation for the command.  Either leave blank for the previous command or use the index from the history command.', type=int, default=0, nargs='?')
-    parser.add_argument('--model', '-m', choices=supported_models, default=default_model, help='Choose a model')
     parser.add_argument('--temperature', '-t', help='Set the temperature for the AI model', default=0.0, type=float)
     parser.add_argument('--history', help='Show the history of commands and responses', action='store_true')
     parser.add_argument('question', nargs='*', help='The question to ask')
@@ -301,7 +306,7 @@ def quickquestion():
         rprint(Panel(a, title="Answer"))
         with Progress(transient=True) as progress:
             progress.add_task("Generating explanation...", total=None)
-            rprint(Panel(ask_chat_completion_explanation(args.model, q, a, args.temperature), title="Explanation"))
+            rprint(Panel(ask_chat_completion_explanation(openai_model, q, a, args.temperature), title="Explanation"))
         
     else:
         q = args.question
@@ -312,7 +317,7 @@ def quickquestion():
             q = Prompt.ask("What command are you looking for")
         with Progress(transient=True) as progress:
             progress.add_task("Generating answer...", total=None)
-            a = ask_chat_completion_question(args.model, q, args.temperature)
+            a = ask_chat_completion_question(openai_model, q, args.temperature)
         rprint(a)
         pyperclip.copy(a)
         append_to_history(q, a)
