@@ -42,7 +42,6 @@ def detect_shell() -> str:
     return parent_name.split('/')[-1]
 
 def detect_linux_distro() -> Union[str, None]:
-    return None
     try:
         logger.debug("Detecting Linux distro")
         distroinfo = platform.freedesktop_os_release()
