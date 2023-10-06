@@ -16,13 +16,13 @@ from rich import print as rprint
 from rich.logging import RichHandler
 from rich.panel import Panel
 from rich.progress import Progress
-from typing import Dict
+from typing import Dict, Union
 
 logger = logging.getLogger('qq')
 
 conn = sqlite3.connect(os.path.join(os.path.expanduser("~"), '.qq_history.db'))
 
-def detect_os():
+def detect_os() -> str:
     system = platform.system()
     if system == 'Linux':
         return 'Linux'
@@ -33,7 +33,7 @@ def detect_os():
     else:
         return 'Unknown'
 
-def detect_shell():
+def detect_shell() -> str:
     parent_pid = os.getppid()
     parent_name = psutil.Process(parent_pid).name()
     if parent_name == "qq.exe":
@@ -41,7 +41,46 @@ def detect_shell():
     logger.debug(parent_name)
     return parent_name.split('/')[-1]
 
-def error_and_exit(message):
+def detect_linux_distro() -> Union[str, None]:
+    return None
+    try:
+        logger.debug("Detecting Linux distro")
+        distroinfo = platform.freedesktop_os_release()
+
+        namestr = distroinfo.get('PRETTY_NAME', None)
+        if namestr:
+            logger.debug("Found PRETTY_NAME %s", namestr)
+            return namestr
+
+        namestr = (distroinfo.get('NAME', None) or
+                    distroinfo.get('ID', None) or
+                    distroinfo.get('ID_LIKE', None))
+
+        if namestr:
+            logger.debug("Found a distro name %s", namestr)
+            versionstr = (distroinfo.get('VERSION', None) or
+                            distroinfo.get('VERSION_ID', None))
+            if versionstr:
+                logger.debug("Found a distro version %s", versionstr)
+                namestr = f"{namestr} {versionstr}"
+
+        logger.debug("Composed a distro name %s", namestr)
+        return namestr
+
+    except:
+        return None
+
+def get_environment_description() -> str:
+    detected_os = detect_os()
+    detected_shell = detect_shell()
+    detected_linux_distro = detect_linux_distro()
+    return f"""
+OS: {detected_os}
+{f"Linux Distro: {detected_linux_distro}" if detected_linux_distro else ""}
+Shell: {detected_shell}
+"""
+
+def error_and_exit(message) -> None:
     logger.error(message)
     sys.exit(1)
 
@@ -153,15 +192,14 @@ def openai_chat_completion(model, prompt, question, functions, function_call, te
         sys.exit(1)
 
 def ask_chat_completion_question(model, question, temperature):
-    detected_os = detect_os()
-    detected_shell = detect_shell()
     prompt = f"""
-    You are a tool designed to help users run commands in the terminal.  Only use the functions you have been provided with.  Do not include the command to run the shell unless it is different to the one running.
-    Format the command in a way that typical placeholder values are used, such as <filename> or <username>.
-    
-    OS: {detected_os}
-    Shell: {detected_shell}
-    """
+You are a tool designed to help users run commands in the terminal.
+Only use the functions you have been provided with.
+Do not include the command to run the shell unless it is different to the one running.
+Format the command in a way that typical placeholder values are used if required, such as <filename> or <username> for required arguments, and [filename] or [username] for optional arguments.
+
+{get_environment_description()}
+"""
     functions = [
         {
             "name": "run_command",
@@ -202,11 +240,11 @@ def ask_chat_completion_explanation(model, question, answer, temperature):
     detected_os = detect_os()
     detected_shell = detect_shell()
     prompt = f"""
-    You are a tool designed to help users run commands in the terminal.  You will be provided a question and an answer that was previously given.  Provide an explanation for how the command works to solve the original question.
-    
-    OS: {detected_os}
-    Shell: {detected_shell}
-    """
+You are a tool designed to help users run commands in the terminal.
+You will be provided a question and an answer that was previously given.
+Provide an explanation for how the command works to solve the original question.
+{get_environment_description()}
+"""
     question = f"""
     Provide an explanation for the following:
     Question: {question}
