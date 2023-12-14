@@ -164,8 +164,8 @@ def openai_chat_completion(model, prompt, question, functions, function_call, te
         func_args['function_call'] = function_call
 
     try:
-        response = openai.ChatCompletion.create(**func_args)
-        return response['choices'][0]['message']
+        response = openai.chat.completions.create(**func_args)
+        return response.choices[0].message
 
     except openai.error.APIError as e:
         logger.error(f"OpenAI API returned an API Error: {e}")
@@ -225,16 +225,16 @@ All the following text is in the paste buffer which may or may not be relevant t
 
     answer = openai_chat_completion(model, prompt, question, functions, function_call, temperature)
     
-    if 'function_call' not in answer:
+    if not hasattr(answer, 'function_call'):
         logger.debug(answer)
         error_and_exit("Cannot process the response, missing function_call.")
 
-    if answer['function_call']['name'] != 'run_command':
-        error_and_exit(f"Invalid function requested: {answer['function_call']['name']}")
+    if answer.function_call.name != 'run_command':
+        error_and_exit(f"Invalid function requested: {answer.function_call.name}")
     try:
-        args = json.loads(answer['function_call']['arguments'])
+        args = json.loads(answer.function_call.arguments)
     except Exception as e:
-        logger.exception(f"Invalid JSON arguments returned from the function API - {answer['function_call']['arguments']}\n{e}")
+        logger.exception(f"Invalid JSON arguments returned from the function API - {answer.function_call.arguments}\n{e}")
         sys.exit(1)
 
     if 'command' not in args:
@@ -262,8 +262,8 @@ All the following text is in the paste buffer which may or may not be relevant t
     Answer: {answer}
     """
     answer = openai_chat_completion(model, prompt, question, [], None, temperature)
-    if 'content' in answer:
-        return answer['content']
+    if hasattr(answer, 'content'):
+        return answer.content
 
     logger.debug(answer)
     logger.error("Cannot process the response.")
