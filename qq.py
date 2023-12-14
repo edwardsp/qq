@@ -102,7 +102,8 @@ def setup_database():
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     timestamp TIMESTAMP,
                     question TEXT,
-                    response TEXT
+                    response TEXT,
+                    paste_buffer TEXT
                 )''')
 
 def get_history_item(id):
@@ -115,11 +116,11 @@ def get_history_item(id):
     if len(rows) == 0:
         logger.error(f"No history item found with id {id}")
         sys.exit(1)
-    return (rows[0]['question'], rows[0]['response'])
+    return (rows[0]['question'], rows[0]['response'], rows[0]['paste_buffer'])
 
-def append_to_history(question, response):
+def append_to_history(question, response, paste_buffer):
     timestamp = datetime.datetime.now().replace(microsecond=0)
-    conn.execute("INSERT INTO history (timestamp, question, response) VALUES (?, ?, ?)", (timestamp, question, response))
+    conn.execute("INSERT INTO history (timestamp, question, response, paste_buffer) VALUES (?, ?, ?, ?)", (timestamp, question, response, paste_buffer))
     conn.commit()
 
 def show_history(max_items=100):
@@ -191,7 +192,7 @@ def openai_chat_completion(model, prompt, question, functions, function_call, te
         logger.exception(f"An unknown exception has occurred: {e}")
         sys.exit(1)
 
-def ask_chat_completion_question(model, question, temperature):
+def ask_chat_completion_question(model, question, paste_buffer, temperature):
     prompt = f"""
 You are a tool designed to help users run commands in the terminal.
 Only use the functions you have been provided with.
@@ -199,6 +200,11 @@ Do not include the command to run the shell unless it is different to the one ru
 Format the command in a way that typical placeholder values are used if required, such as <filename> or <username> for required arguments, and [filename] or [username] for optional arguments.
 
 {get_environment_description()}
+"""
+    if paste_buffer:
+        prompt += f"""
+All the following text is in the paste buffer which may or may not be relevant to the question:
+{paste_buffer}
 """
     functions = [
         {
@@ -236,7 +242,7 @@ Format the command in a way that typical placeholder values are used if required
     return args['command']
 
     
-def ask_chat_completion_explanation(model, question, answer, temperature):
+def ask_chat_completion_explanation(model, question, answer, paste_buffer, temperature):
     detected_os = detect_os()
     detected_shell = detect_shell()
     prompt = f"""
@@ -244,6 +250,11 @@ You are a tool designed to help users run commands in the terminal.
 You will be provided a question and an answer that was previously given.
 Provide an explanation for how the command works to solve the original question.
 {get_environment_description()}
+"""
+    if paste_buffer:
+        prompt += f"""
+All the following text is in the paste buffer which may or may not be relevant to the question.  If you need to use it, explain why in the answer:
+{paste_buffer}
 """
     question = f"""
     Provide an explanation for the following:
@@ -326,6 +337,7 @@ def quickquestion():
     parser.add_argument('--explain', '-e', help='Give an explanation for the command.  Either leave blank for the previous command or use the index from the history command.', type=int, default=0, nargs='?')
     parser.add_argument('--temperature', '-t', help='Set the temperature for the AI model', default=0.0, type=float)
     parser.add_argument('--history', help='Show the history of commands and responses', action='store_true')
+    parser.add_argument('--no-paste', help='Do not use the paste buffer as part of the input', action='store_true')
     parser.add_argument('question', nargs='*', help='The question to ask')
 
     args = parser.parse_args()
@@ -339,12 +351,12 @@ def quickquestion():
     if args.history:
         show_history()
     elif args.explain != 0:
-        q, a = get_history_item(args.explain)
+        q, a, paste_buffer = get_history_item(args.explain)
         rprint(Panel(q, title="Question"))
         rprint(Panel(a, title="Answer"))
         with Progress(transient=True) as progress:
             progress.add_task("Generating explanation...", total=None)
-            rprint(Panel(ask_chat_completion_explanation(openai_model, q, a, args.temperature), title="Explanation"))
+            rprint(Panel(ask_chat_completion_explanation(openai_model, q, a, paste_buffer, args.temperature), title="Explanation"))
         
     else:
         q = args.question
@@ -355,10 +367,13 @@ def quickquestion():
             q = Prompt.ask("What command are you looking for")
         with Progress(transient=True) as progress:
             progress.add_task("Generating answer...", total=None)
-            a = ask_chat_completion_question(openai_model, q, args.temperature)
+            paste_buffer = ""
+            if not args.no_paste:
+                paste_buffer = pyperclip.paste()
+            a = ask_chat_completion_question(openai_model, q, paste_buffer, args.temperature)
         rprint(a)
         pyperclip.copy(a)
-        append_to_history(q, a)
+        append_to_history(q, a, paste_buffer)
 
 if __name__ == "__main__":
     quickquestion()
