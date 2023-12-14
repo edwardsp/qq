@@ -11,7 +11,7 @@ setup(
     url="https://github.com/edwardsp/quickquestion",
     py_modules=["qq"],
     install_requires=[
-        "openai>=0.28.0",
+        "openai>=1.0.0",
         "psutil>=5.9.5",
         "pyperclip>=1.8.2",
         "rich>=13.5.3"
