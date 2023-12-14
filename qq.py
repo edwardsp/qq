@@ -337,7 +337,7 @@ def quickquestion():
     parser.add_argument('--explain', '-e', help='Give an explanation for the command.  Either leave blank for the previous command or use the index from the history command.', type=int, default=0, nargs='?')
     parser.add_argument('--temperature', '-t', help='Set the temperature for the AI model', default=0.0, type=float)
     parser.add_argument('--history', help='Show the history of commands and responses', action='store_true')
-    parser.add_argument('--no-paste', help='Do not use the paste buffer as part of the input', action='store_true')
+    parser.add_argument('--paste', '-p', help='Send the paste buffer as part of the input', action='store_true')
     parser.add_argument('question', nargs='*', help='The question to ask')
 
     args = parser.parse_args()
@@ -368,7 +368,7 @@ def quickquestion():
         with Progress(transient=True) as progress:
             progress.add_task("Generating answer...", total=None)
             paste_buffer = ""
-            if not args.no_paste:
+            if args.paste:
                 paste_buffer = pyperclip.paste()
             a = ask_chat_completion_question(openai_model, q, paste_buffer, args.temperature)
         rprint(a)
